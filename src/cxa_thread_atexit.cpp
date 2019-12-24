@@ -103,7 +103,6 @@ namespace {
   };
 } // namespace
 
-#endif // HAVE___CXA_THREAD_ATEXIT_IMPL
 
 extern "C" {
 
@@ -132,7 +131,7 @@ extern "C" {
       return 0;
   }
 
-  int __attribute__((__weak__)) __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw()
+  int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw()
   {
       return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
   }
