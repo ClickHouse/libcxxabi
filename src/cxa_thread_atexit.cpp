@@ -1,18 +1,10 @@
-//===----------------------- cxa_thread_atexit.cpp ------------------------===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
-/** This file was edited for ClickHouse.
-  * This is needed to avoid linking with "__cxa_thread_atexit_impl" function, that require too new (2.18) glibc library.
-  *
-  * Note: "__cxa_thread_atexit_impl" may provide sophisticated implementation to correct destruction of thread-local objects,
-  * that was created in different DSO. Read https://sourceware.org/glibc/wiki/Destructor%20support%20for%20thread_local%20variables
-  * We simply don't need this implementation, because we don't use thread-local objects from different DSO.
-  */
 
 #include "abort_message.h"
 #include "cxxabi.h"
@@ -29,6 +21,15 @@ namespace __cxxabiv1 {
 
   using Dtor = void(*)(void*);
 
+  extern "C"
+#ifndef HAVE___CXA_THREAD_ATEXIT_IMPL
+  // A weak symbol is used to detect this function's presence in the C library
+  // at runtime, even if libc++ is built against an older libc
+  _LIBCXXABI_WEAK
+#endif
+  int __cxa_thread_atexit_impl(Dtor, void*, void*);
+
+#ifndef HAVE___CXA_THREAD_ATEXIT_IMPL
 
 namespace {
   // This implementation is used if the C library does not provide
@@ -103,10 +104,17 @@ namespace {
   };
 } // namespace
 
+#endif // HAVE___CXA_THREAD_ATEXIT_IMPL
 
 extern "C" {
 
-  _LIBCXXABI_FUNC_VIS int __cxa_thread_atexit_impl(Dtor dtor, void* obj, void* dso_symbol) throw() {
+  _LIBCXXABI_FUNC_VIS int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw() {
+#ifdef HAVE___CXA_THREAD_ATEXIT_IMPL
+    return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
+#else
+    if (__cxa_thread_atexit_impl) {
+      return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
+    } else {
       // Initialize the dtors std::__libcpp_tls_key (uses __cxa_guard_*() for
       // one-time initialization and __cxa_atexit() for destruction)
       static DtorsManager manager;
@@ -129,11 +137,8 @@ extern "C" {
       dtors = head;
 
       return 0;
-  }
-
-  int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw()
-  {
-      return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
+    }
+#endif // HAVE___CXA_THREAD_ATEXIT_IMPL
   }
 
 } // extern "C"
